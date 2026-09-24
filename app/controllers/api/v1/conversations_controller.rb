@@ -196,22 +196,29 @@ class Api::V1::ConversationsController < Api::V1::BaseController
   end
 
   def create
+    reused_conversation = false
     ActiveRecord::Base.transaction do
       @conversation = ConversationBuilder.new(params: params, contact_inbox: @contact_inbox).perform
+      # [Traggi] Capturado ANTES do MessageBuilder: um save posterior zera previously_new_record?.
+      reused_conversation = !@conversation.previously_new_record?
       Messages::MessageBuilder.new(Current.user, @conversation, params[:message]).perform if params[:message].present?
-      
-      success_response(
-        data: ConversationSerializer.serialize(
-          @conversation,
-          include_messages: true,
-          include_labels: true,
-          labels_by_title: labels_by_title,
-          labels_by_id: labels_by_id
-        ),
-        message: 'Conversation created successfully',
-        status: :created
-      )
     end
+
+    # [Traggi] Fora da transação (como o after_create_commit do fluxo de conversa nova),
+    # para o job de automação só enxergar o card já vinculado e commitado.
+    @conversation.handle_reused_by_agent_start! if reused_conversation
+
+    success_response(
+      data: ConversationSerializer.serialize(
+        @conversation,
+        include_messages: true,
+        include_labels: true,
+        labels_by_title: labels_by_title,
+        labels_by_id: labels_by_id
+      ),
+      message: 'Conversation created successfully',
+      status: :created
+    )
   rescue StandardError => e
     Rails.logger.error "Conversation creation failed: #{e.message}"
     error_response(

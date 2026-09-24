@@ -1,0 +1,52 @@
+# [Traggi] Gera a imagem Docker do backend personalizado e publica no GitHub Container Registry.
+# A mesma imagem serve o web (Rails) e o worker (Sidekiq).
+name: Traggi - build imagem backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.4'
+
+      - name: Checagem de sintaxe dos arquivos Traggi
+        run: |
+          grep -rl "\[Traggi\]" app lib config --include=*.rb | xargs -r -n1 ruby -wc
+
+      - name: Nome da imagem em minúsculas
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            RAILS_ENV=production
+            BUNDLE_WITHOUT=development:test
+            RAILS_SERVE_STATIC_FILES=true
+            GIT_SHA=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ env.OWNER }}/evo-crm-backend-traggi:latest
+            ghcr.io/${{ env.OWNER }}/evo-crm-backend-traggi:${{ github.sha }}

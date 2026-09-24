@@ -273,6 +273,21 @@ class Conversation < ApplicationRecord
     @status_explicitly_set = true
   end
 
+  # [Traggi] "Iniciar conversa" (POST /conversations) pode REAPROVEITAR uma conversa
+  # existente do contato na mesma inbox (ConversationBuilder faz find_or_create_by e
+  # respeita lock_to_single_conversation). Nesse caso nenhum after_create_commit roda:
+  # o card de lead do contato não era promovido e as regras "conversation_created"
+  # não disparavam. Aqui refazemos só essas duas coisas, na mesma ordem do fluxo de
+  # criação (vincula o card antes, pois a automação pode querer mover esse card).
+  def handle_reused_by_agent_start!
+    return if imported?
+
+    assign_to_default_pipeline
+    Conversations::ReusedStartAutomationJob.perform_later(self)
+  rescue StandardError => e
+    Rails.logger.error "[Pipeline] Reused conversation #{id} follow-up failed: #{e.class}: #{e.message}"
+  end
+
   private
 
   def ensure_display_id
