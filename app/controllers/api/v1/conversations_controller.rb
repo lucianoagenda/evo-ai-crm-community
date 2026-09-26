@@ -19,6 +19,7 @@ class Api::V1::ConversationsController < Api::V1::BaseController
     unpin: 'conversations.update',
     archive: 'conversations.update',
     unarchive: 'conversations.update',
+    switch_inbox: 'conversations.update', # [Traggi]
     transcript: 'conversations.transcript',
     email_team: 'conversations.update',
     available_for_pipeline: 'conversations.read',
@@ -464,6 +465,34 @@ class Api::V1::ConversationsController < Api::V1::BaseController
 
   def unarchive
     update_custom_attribute('archived', false, 'Conversation unarchived successfully')
+  end
+
+  # [Traggi] Troca o WhatsApp de saída mantendo a conversa/card (número caiu ou foi banido).
+  def switch_inbox
+    target_inbox = Inbox.find(params[:inbox_id])
+    authorize target_inbox, :show?
+
+    conversation = Conversations::SwitchInboxService.new(
+      conversation: @conversation, target_inbox: target_inbox, user: Current.user
+    ).perform
+
+    success_response(
+      data: ConversationSerializer.serialize(
+        conversation,
+        include_messages: false,
+        include_labels: true,
+        labels_by_title: labels_by_title,
+        labels_by_id: labels_by_id
+      ),
+      message: 'Conversation inbox switched successfully'
+    )
+  rescue Conversations::SwitchInboxService::Error => e
+    error_response(
+      ApiErrorCodes::BUSINESS_RULE_VIOLATION,
+      'Conversation inbox cannot be switched',
+      details: { reason: e.reason.to_s },
+      status: :unprocessable_entity
+    )
   end
 
   private

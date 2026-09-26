@@ -149,6 +149,8 @@ Rails.application.routes.draw do
           post :unpin
           post :archive
           post :unarchive
+          # [Traggi] troca o WhatsApp de saída da conversa
+          post :switch_inbox
           get :attachments
           get :inbox_assistant
         end

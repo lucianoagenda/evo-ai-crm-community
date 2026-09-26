@@ -21,10 +21,11 @@ module MessageSerializer
   # @return [Hash] Serialized message ready for Oj
   #
   def serialize(message, include_attachments: true, include_sender: true, include_conversation: false)
+    # [Traggi] inbox_id: a conversa pode trocar de WhatsApp; a UI mostra "via <número>".
     result = message.as_json(
       only: [:id, :content, :content_type, :content_attributes, :message_type,
              :private, :status, :source_id, :sender_type, :sender_id,
-             :conversation_id, :external_source_ids,
+             :conversation_id, :inbox_id, :external_source_ids,
              :additional_attributes, :processed_message_content, :sentiment, :sentiment_score]
     )
 
