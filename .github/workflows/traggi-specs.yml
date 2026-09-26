@@ -56,10 +56,31 @@ jobs:
         run: bundle exec rails db:schema:load
       - name: Run Traggi specs
         run: |
+          mkdir -p tmp
           bundle exec rspec \
             spec/requests/api/v1/pipeline_items_cross_pipeline_move_spec.rb \
             spec/services/conversations/message_window_service_current_inbox_spec.rb \
             spec/services/conversations/switch_inbox_service_spec.rb \
             spec/requests/api/v1/conversations/switch_inbox_spec.rb \
             spec/requests/api/v1/pipeline_items_archived_spec.rb \
-            --format documentation
+            --format documentation \
+            --format json --out tmp/rspec.json
+      # [Traggi] Publica as falhas como anotações (legíveis pela API pública sem acesso de admin).
+      - name: Annotate failures
+        if: failure()
+        run: |
+          ruby -rjson -e '
+            path = "tmp/rspec.json"
+            unless File.exist?(path)
+              puts "::error::rspec.json ausente (erro antes dos exemplos)"
+              exit 0
+            end
+            data = JSON.parse(File.read(path))
+            puts "::error::#{data["summary_line"]}"
+            errs = data.dig("summary", "errors_outside_of_examples_count").to_i
+            puts "::error::errors outside examples: #{errs} :: #{data["messages"].to_a.join(" | ").gsub(/\s+/, " ")[0, 900]}" if errs.positive?
+            data["examples"].select { |e| e["status"] == "failed" }.first(8).each do |e|
+              msg = "#{e["full_description"]} :: #{e.dig("exception", "class")}: #{e.dig("exception", "message")}".gsub(/\s+/, " ")[0, 900]
+              puts "::error file=#{e["file_path"].sub(%r{^\./}, "")},line=#{e["line_number"]}::#{msg}"
+            end
+          '
