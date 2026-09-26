@@ -1,0 +1,65 @@
+# [Traggi] Roda as specs das features Traggi em branches de feature.
+# Não há Ruby local na máquina de desenvolvimento, então o TDD do backend usa este job.
+name: Traggi - specs
+
+on:
+  push:
+    branches: ['feature/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RAILS_ENV: test
+  ENCRYPTION_KEY: test-encryption-key-for-fernet!!
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_USERNAME: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DATABASE: evolution_test
+
+jobs:
+  specs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: evolution_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.4'
+          bundler-cache: true
+      - name: Prepare test database
+        run: bundle exec rails db:schema:load
+      - name: Run Traggi specs
+        run: |
+          bundle exec rspec \
+            spec/requests/api/v1/pipeline_items_cross_pipeline_move_spec.rb \
+            spec/services/conversations/message_window_service_current_inbox_spec.rb \
+            spec/services/conversations/switch_inbox_service_spec.rb \
+            spec/requests/api/v1/conversations/switch_inbox_spec.rb \
+            spec/requests/api/v1/pipeline_items_archived_spec.rb \
+            --format documentation
