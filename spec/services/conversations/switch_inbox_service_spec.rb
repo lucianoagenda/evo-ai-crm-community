@@ -100,4 +100,46 @@ RSpec.describe Conversations::SwitchInboxService do
     expect { perform }.to raise_error(ActiveRecord::RecordInvalid)
     expect(conversation.reload.inbox_id).to eq(old_inbox.id)
   end
+
+  # Revisão final C2: Inbox#name é sanitizado ("Número A" -> "nmero-a"); o nome legível fica em display_name.
+  it 'uses the human-readable inbox names in the activity message' do
+    expect(old_inbox.name).not_to eq('Número A')
+
+    result = perform
+
+    expect(result.messages.where(message_type: :activity).last.content).to include('Número A', 'Número B')
+  end
+
+  # Revisão final C1: o Evolution grava source_id de celular BR sempre com 13 dígitos (com o 9),
+  # mas Contact normaliza o telefone e pode tirar o 9 (DDD >= 31). O ContactInbox da troca precisa
+  # usar o mesmo formato do serviço de entrada, senão a resposta abre outra conversa.
+  context 'with a Brazilian mobile number whose DDD drops the ninth digit' do
+    let(:contact) { Contact.create!(name: 'BH', phone_number: '+5531988887777') }
+    let(:old_ci) { ContactInbox.create!(inbox: old_inbox, contact: contact, source_id: '5531988887777') }
+
+    it 'creates the target contact inbox with the 13-digit source_id Evolution uses' do
+      perform
+
+      new_ci = ContactInbox.find_by!(inbox: new_inbox, contact: contact)
+      expect(new_ci.source_id).to eq('5531988887777')
+    end
+
+    it 'reuses the contact inbox the contact already has on the target number, whatever its format' do
+      existing = ContactInbox.create!(inbox: new_inbox, contact: contact, source_id: '5531988887777')
+      conversation
+
+      expect { perform }.not_to change(ContactInbox, :count)
+      expect(conversation.reload.contact_inbox_id).to eq(existing.id)
+    end
+  end
+
+  # Revisão final I3: com outra conversa aberta no mesmo ContactInbox, a resposta do cliente
+  # cairia numa das duas de forma imprevisível.
+  it 'refuses when the contact already has another open conversation on the target number' do
+    new_ci = ContactInbox.create!(inbox: new_inbox, contact: contact, source_id: contact.phone_number.delete('+'))
+    Conversation.create!(inbox: new_inbox, contact: contact, contact_inbox: new_ci)
+
+    expect { perform }.to raise_error(described_class::Error) { |e| expect(e.reason).to eq(:target_has_open_conversation) }
+    expect(conversation.reload.inbox_id).to eq(old_inbox.id)
+  end
 end
