@@ -71,7 +71,9 @@ class Conversations::MessageWindowService
     GlobalConfigService.load(config_key, nil) ? MESSAGING_WINDOW_7_DAYS : MESSAGING_WINDOW_24_HOURS
   end
 
+  # [Traggi] Só mensagens recebidas pelo número atual: a janela da Meta é por
+  # número, e a conversa pode ter trocado de WhatsApp (SwitchInboxService).
   def last_incoming_message
-    @last_incoming_message ||= @conversation.messages&.incoming&.last
+    @last_incoming_message ||= @conversation.messages&.incoming&.where(inbox_id: @conversation.inbox_id)&.last
   end
 end
