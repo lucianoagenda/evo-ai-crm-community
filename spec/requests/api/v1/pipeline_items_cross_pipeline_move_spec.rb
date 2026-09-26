@@ -108,7 +108,8 @@ RSpec.describe 'PATCH move_to_stage across pipelines', type: :request do
 
     move!(new_stage_id: target_stage.id, target_pipeline_id: target.id)
 
-    expect(response).to have_http_status(:forbidden)
+    # Convenção da app: negação do Pundit vira 401 (RequestExceptionHandler), como em pipeline_items_write_authz_rbac_spec.
+    expect(response).to have_http_status(:unauthorized)
     expect(item.reload.pipeline_id).to eq(source.id)
   end
 

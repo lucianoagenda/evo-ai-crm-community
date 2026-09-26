@@ -55,7 +55,8 @@ RSpec.describe 'POST /api/v1/conversations/:id/switch_inbox', type: :request do
 
     post "/api/v1/conversations/#{conversation.id}/switch_inbox", params: { inbox_id: new_inbox.id }, as: :json
 
-    expect(response).to have_http_status(:forbidden)
+    # Convenção da app: negação do Pundit vira 401 (RequestExceptionHandler), como em pipeline_items_write_authz_rbac_spec.
+    expect(response).to have_http_status(:unauthorized)
     expect(conversation.reload.inbox_id).to eq(old_inbox.id)
   end
 
