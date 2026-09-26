@@ -352,6 +352,9 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
 
   # rubocop:disable Metrics/MethodLength
   def move_to_stage
+    # [Traggi] "Mover para…" no card: etapa de outro pipeline.
+    return move_to_other_pipeline if cross_pipeline_move?
+
     begin
       new_stage = @pipeline.pipeline_stages.find(params[:new_stage_id])
     rescue ActiveRecord::RecordNotFound
@@ -581,6 +584,73 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
     authorize source_pipeline, :update_items?
   end
 
+  # [Traggi] move_to_stage com target_pipeline_id diferente do pipeline da URL.
+  def cross_pipeline_move?
+    params[:target_pipeline_id].present? && params[:target_pipeline_id].to_s != @pipeline.id.to_s
+  end
+
+  # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+  def move_to_other_pipeline
+    target_pipeline = Pipeline.find_by(id: params[:target_pipeline_id])
+    if target_pipeline.nil?
+      return error_response(ApiErrorCodes::RESOURCE_NOT_FOUND, 'Target pipeline not found', status: :not_found)
+    end
+
+    authorize target_pipeline, :update_items? unless service_authenticated?
+
+    unless target_pipeline.is_active
+      return error_response(
+        ApiErrorCodes::PIPELINE_ARCHIVED,
+        'Pipeline is archived and cannot receive conversations',
+        status: :unprocessable_entity
+      )
+    end
+
+    target_stage = target_pipeline.pipeline_stages.find_by(id: params[:new_stage_id])
+    if target_stage.nil?
+      return error_response(ApiErrorCodes::RESOURCE_NOT_FOUND, 'Stage not found in target pipeline', status: :not_found)
+    end
+
+    existing = active_item_in(target_pipeline)
+    if existing
+      return error_response(
+        ApiErrorCodes::BUSINESS_RULE_VIOLATION,
+        "Item already has an active journey in this pipeline in stage '#{existing.pipeline_stage.name}'",
+        details: { existing_stage: existing.pipeline_stage.name, existing_stage_id: existing.pipeline_stage_id },
+        status: :unprocessable_entity
+      )
+    end
+
+    moved = Pipelines::ConversationService.new(pipeline: target_pipeline, user: Current.user)
+                                          .move_to_pipeline_stage(@pipeline_item, target_stage)
+    unless moved
+      return error_response(ApiErrorCodes::OPERATION_FAILED, 'Failed to move item', status: :unprocessable_entity)
+    end
+
+    persist_notes(params[:notes]) if params[:notes].present?
+    dispatch_conversation_updated_event(@pipeline_item.conversation)
+
+    success_response(
+      data: {
+        pipeline_item: @pipeline_item.reload.push_event_data,
+        movement_type: 'cross_pipeline',
+        pipeline_id: target_pipeline.id,
+        stage_id: target_stage.id
+      },
+      message: 'Item moved successfully'
+    )
+  end
+  # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
+
+  def active_item_in(target_pipeline)
+    scope = target_pipeline.pipeline_items.active
+    if @pipeline_item.conversation_id.present?
+      scope.find_by(conversation_id: @pipeline_item.conversation_id)
+    else
+      scope.find_by(contact_id: @pipeline_item.contact_id)
+    end
+  end
+
   # Attaches notes to the most recent stage_movement so a journey/manual note
   # persists even when the stage didn't change. If the item somehow has no
   # movement yet, create a manual one carrying the note (mirrors the
@@ -633,7 +703,9 @@ class Api::V1::PipelineItemsController < Api::V1::BaseController
     # For destroy and move_to_stage actions, try to find by conversation_id first, then by pipeline_item id
     if %w[destroy move_to_stage update_conversation].include?(action_name)
       # First try to find by conversation display_id
-      conversation = Conversation.find_by(display_id: params[:id])
+      # [Traggi] Só busca por display_id quando o parâmetro é numérico: o cast de integer
+      # transformava UUIDs como "00000001-..." em 1 e movia o card de outra conversa.
+      conversation = Conversation.find_by(display_id: params[:id]) if params[:id].to_s.match?(/\A\d+\z/)
       @pipeline_item = @pipeline.pipeline_items.find_by(conversation: conversation) if conversation
 
       # If not found, try by conversation id (UUID)
