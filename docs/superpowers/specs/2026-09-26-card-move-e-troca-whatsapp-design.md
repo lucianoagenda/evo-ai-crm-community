@@ -137,3 +137,13 @@ Depois do commit, dispara `conversation.updated` pelo dispatcher, para que as te
 1. Item 1 (backend e depois frontend): independente e de valor imediato.
 2. Item 2, backend (serviço, endpoint, ajuste da regra de 24h, serializer).
 3. Item 2, frontend (seletor, aviso, ação no card, etiqueta "via").
+
+---
+
+## Ajustes feitos na implementação (2026-09-26)
+
+- **Onde fica o "Mover para…":** o Kanban já tinha um menu de mover (ícone ⇄) restrito ao mesmo pipeline, e a ficha do card (`EditItemModal`) já tinha seletor de etapa. O "Outro pipeline…" foi adicionado nesses dois lugares (não em `PipelineItemCard`, que não é usado no Kanban).
+- **Após mover:** o Kanban recarrega os dados (padrão existente do quadro) em vez de atualização otimista.
+- **Serializer de mensagem:** expõe só `inbox_id`; o nome do número vem do store de inboxes no frontend.
+- **Destino "indisponível":** `connection_state` em `disconnected`/`error`. `unknown`/`pending` são permitidos, porque provedores por token (ex.: `whatsapp_cloud`) costumam reportar `unknown`.
+- **Bug corrigido de carona:** `PipelineItemsController#set_pipeline_item` buscava a conversa por `display_id` com qualquer parâmetro; o cast de integer fazia UUIDs como `00000001-…` casarem com a conversa #1 e mover o card errado. Agora só busca por `display_id` com parâmetro numérico.
