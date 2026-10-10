@@ -133,6 +133,10 @@ Rails.application.routes.draw do
         resource :participants, only: [:show, :create, :update, :destroy], controller: 'conversations/participants'
         resource :direct_uploads, only: [:create], controller: 'conversations/direct_uploads'
         resource :draft_messages, only: [:show, :update, :destroy], controller: 'conversations/draft_messages'
+        # [Traggi] painel do Traggi na barra lateral da conversa
+        resource :traggi, only: [:show], controller: 'conversations/traggi' do
+          post :acao
+        end
         member do
           post :mute
           post :unmute
