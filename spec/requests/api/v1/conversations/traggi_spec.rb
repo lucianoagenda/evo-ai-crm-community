@@ -9,8 +9,10 @@ RSpec.describe 'Traggi panel on a conversation', type: :request do
     channel = Channel::Api.create!
     Inbox.create!(name: 'API', channel: channel)
   end
-  let(:phone) { "+55489#{rand(10_000_000..99_999_999)}" }
-  let(:contact) { Contact.create!(name: 'Joana', phone_number: phone) }
+  let(:phone_input) { "+55489#{rand(10_000_000..99_999_999)}" }
+  let(:contact) { Contact.create!(name: 'Joana', phone_number: phone_input) }
+  # O Contact normaliza o número como o WhatsApp (pode tirar o nono dígito): vale o gravado.
+  let(:phone) { contact.reload.phone_number }
   let(:contact_inbox) { ContactInbox.create!(inbox: inbox, contact: contact, source_id: SecureRandom.hex(4)) }
   let(:conversation) { Conversation.create!(inbox: inbox, contact: contact, contact_inbox: contact_inbox) }
   let(:client) { instance_double(Traggi::Client, configured?: true) }
