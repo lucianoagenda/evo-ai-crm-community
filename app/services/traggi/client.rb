@@ -18,8 +18,11 @@ module Traggi
       end
     end
 
+    # Mesmo padrão do proxy /traggi-api do frontend (docker-entrypoint.sh).
+    DEFAULT_URL = 'https://app.traggi.com.br'
+
     def initialize(url: ENV.fetch('TRAGGI_API_URL', ''), key: ENV.fetch('TRAGGI_API_KEY', ''))
-      @url = url.to_s.strip.chomp('/')
+      @url = (url.to_s.strip.presence || DEFAULT_URL).chomp('/')
       @key = key.to_s.strip
     end
 

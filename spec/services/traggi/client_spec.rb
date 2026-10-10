@@ -22,6 +22,15 @@ RSpec.describe Traggi::Client do
     expect(described_class.new).not_to be_configured
   end
 
+  it 'defaults to the production Traggi url, like the frontend proxy' do
+    ENV.delete('TRAGGI_API_URL')
+    stub = stub_request(:get, 'https://app.traggi.com.br/api/agente/crm/situacao?telefone=55').to_return(status: 200, body: '{"tipo":"nenhum"}')
+
+    described_class.new.situacao('55')
+
+    expect(stub).to have_been_requested
+  end
+
   it 'fetches the situation of a phone with the Api-Key header' do
     stub = stub_request(:get, "#{base}/api/agente/crm/situacao")
            .with(query: { telefone: '5548991000001' }, headers: { 'Api-Key' => 'chave-secreta' })
