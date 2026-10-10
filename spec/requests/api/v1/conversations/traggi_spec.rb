@@ -75,7 +75,7 @@ RSpec.describe 'Traggi panel on a conversation', type: :request do
       post "/api/v1/conversations/#{conversation.id}/traggi/acao",
            params: { tipo: 'lead', id: 3, acao: 'encerrar', observacao: 'ok', telefone: '+5500000000000' }, as: :json
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:ok), response.body.to_s[0, 600]
       expect(response.parsed_body['data']).to include('configured' => true, 'status' => 'encerrado')
     end
 
