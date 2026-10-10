@@ -1,0 +1,83 @@
+# [Traggi] Roda as specs do painel do Traggi na conversa (branch feature/painel-traggi).
+# Não há Ruby local na máquina de desenvolvimento, então o TDD do backend usa este job.
+name: Traggi - specs do painel
+
+on:
+  push:
+    branches: ['feature/painel-traggi']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RAILS_ENV: test
+  ENCRYPTION_KEY: test-encryption-key-for-fernet!!
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_USERNAME: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DATABASE: evolution_test
+
+jobs:
+  specs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: evolution_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.4'
+          bundler-cache: true
+      - name: Prepare test database
+        run: bundle exec rails db:schema:load
+      - name: Run Traggi specs
+        run: |
+          mkdir -p tmp
+          bundle exec rspec \
+            spec/services/traggi/client_spec.rb \
+            spec/requests/api/v1/conversations/traggi_spec.rb \
+            --format documentation \
+            --format json --out tmp/rspec.json
+      # [Traggi] Publica as falhas como anotações (legíveis pela API pública sem acesso de admin).
+      - name: Annotate failures
+        if: failure()
+        run: |
+          ruby -rjson -e '
+            path = "tmp/rspec.json"
+            unless File.exist?(path)
+              puts "::error::rspec.json ausente (erro antes dos exemplos)"
+              exit 0
+            end
+            data = JSON.parse(File.read(path))
+            puts "::error::#{data["summary_line"]}"
+            errs = data.dig("summary", "errors_outside_of_examples_count").to_i
+            puts "::error::errors outside examples: #{errs} :: #{data["messages"].to_a.join(" | ").gsub(/\s+/, " ")[0, 900]}" if errs.positive?
+            data["examples"].select { |e| e["status"] == "failed" }.first(8).each do |e|
+              msg = "#{e["full_description"]} :: #{e.dig("exception", "class")}: #{e.dig("exception", "message")}".gsub(/\s+/, " ")[0, 900]
+              puts "::error file=#{e["file_path"].sub(%r{^\./}, "")},line=#{e["line_number"]}::#{msg}"
+            end
+          '
